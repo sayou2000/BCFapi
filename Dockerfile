@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir lark
 
 # BCF-Python-Module explizit aus dem offiziellen Repo installieren
 # (nutzt nur den BCF-Teil, keine Kompilierung nötig)
-RUN pip install --no-cache-dir "git+https://github.com/IfcOpenShell/IfcOpenShell.git#subdirectory=src/ifcopenshell-python/ifcopenshell/bcf"
+RUN pip install --no-cache-dir "git+https://github.com/IfcOpenShell/IfcOpenShell.git#subdirectory=src/ifcopenshell-python"
 
 WORKDIR /app
 COPY main.py /app/main.py
@@ -26,3 +26,4 @@ RUN pip install --no-cache-dir fastapi "uvicorn[standard]" python-multipart
 EXPOSE 80
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
+
