@@ -1,24 +1,28 @@
 FROM continuumio/miniconda3:latest
 
-# Schnelle, schlanke Systembasis
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tini \
+# Basis: schlank + init
+RUN apt-get update && apt-get install -y --no-install-recommends tini \
  && rm -rf /var/lib/apt/lists/*
 
-# Conda-Channel korrekt setzen und IfcOpenShell + BCF installieren
+# Conda-Setup + IfcOpenShell
 RUN conda config --add channels conda-forge \
  && conda config --set channel_priority strict \
- && conda install -y ifcopenshell bcf-client \
+ && conda install -y ifcopenshell \
  && conda clean -afy
 
-# Python-API-Stack
-RUN pip install --no-cache-dir fastapi "uvicorn[standard]" python-multipart
+# Fehlende Python-Dependencies für BCF
+RUN pip install --no-cache-dir lark
 
-# App vorbereiten
+# BCF-Python-Module explizit aus dem offiziellen Repo installieren
+# (nutzt nur den BCF-Teil, keine Kompilierung nötig)
+RUN pip install --no-cache-dir "git+https://github.com/IfcOpenShell/IfcOpenShell.git#subdirectory=src/ifcopenshell-python/ifcopenshell/bcf"
+
 WORKDIR /app
 COPY main.py /app/main.py
 
-# Port & Entrypoint
+# API-Stack
+RUN pip install --no-cache-dir fastapi "uvicorn[standard]" python-multipart
+
 EXPOSE 80
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
