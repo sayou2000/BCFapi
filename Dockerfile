@@ -2,7 +2,7 @@
 FROM aecgeeks/ifcopenshell:latest
 
 # Installiere FastAPI und den Webserver Uvicorn
-RUN pip install "fastapi[all]"
+RUN python -m pip install "fastapi[all]"
 
 # Erstelle ein Arbeitsverzeichnis
 WORKDIR /app
@@ -13,6 +13,7 @@ COPY main.py .
 # Dieser Befehl startet den FastAPI-Server, wenn der Container gestartet wird
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
+
 
 
 
