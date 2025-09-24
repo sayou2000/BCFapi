@@ -26,28 +26,11 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
 # In Coolify musst du eine Secret/Environment Variable namens "API_KEY" setzen
 SECRET_API_KEY = os.getenv("API_KEY", "default-secret-key-change-me")
 
-# Ersetze die alte get_api_key Funktion hiermit:
 async def get_api_key(api_key: str = Depends(api_key_header)):
-    """Prüft den API-Schlüssel und gibt detailliertes Feedback beim Scheitern."""
-
-    # Prüfen, ob der Server-Schlüssel überhaupt geladen wurde
-    if not SECRET_API_KEY or SECRET_API_KEY == "default-secret-key-change-me":
-        raise HTTPException(
-            status_code=500, 
-            detail="Sicherheitsfehler: API_KEY auf dem Server nicht konfiguriert."
-        )
-
-    if api_key != SECRET_API_KEY:
-        # ACHTUNG: NUR ZUM DEBUGGEN! DIES LEAKT INFORMATIONEN!
-        # Zeigt, was der Server erwartet vs. was er bekommen hat.
-        detail_msg = (
-            f"Schlüssel-Mismatch. Erhalten: '{api_key}'. "
-            f"Erwartet (Anfang): '{SECRET_API_KEY[:4]}...'. "
-            f"Längenvergleich: Erhalten={len(api_key)}, Erwartet={len(SECRET_API_KEY)}"
-        )
-        raise HTTPException(status_code=403, detail=detail_msg)
-
-    return api_key
+"""Prüft, ob der mitgelieferte API-Schlüssel gültig ist."""
+if api_key != SECRET_API_KEY:
+raise HTTPException(status_code=403, detail="Ungültiger oder fehlender API-Schlüssel")
+return api_key
 
 # --- Bestehende und erweiterte Lese-Endpunkte ---
 
@@ -168,5 +151,6 @@ def update_bcf_topic(file_name: str, topic_guid: str, new_status: str, new_title
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Bearbeiten der BCF-Datei: {e}")
+
 
 
