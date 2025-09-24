@@ -6,10 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Installiere die benötigten Python-Pakete (wieder mit bcf-client)
-RUN pip install --no-cache-dir --upgrade \
+RUN pip install --no-cache-dir \
     ifcopenshell \
-    bcf-client \
+    bcf-client==0.7.0 \
     fastapi "uvicorn[standard]" \
     python-multipart
 
@@ -24,3 +23,4 @@ EXPOSE 80
 
 # Starte den FastAPI-Server
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
+
