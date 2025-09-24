@@ -1,39 +1,48 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
-import ifcopenshell
-from bcf import reader as bcf_reader  # KEIN .v2!
+import tempfile
+import os
 
-app = FastAPI()
+# Das ist der Import-Pfad, der nachweislich funktioniert.
+# Wir holen uns direkt die Klasse, die wir brauchen.
+from bcf.bcfxml import BcfXml
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+app = FastAPI(
+    title="BCF API Service",
+    description="Eine API zum Hochladen und Lesen von BCF-Dateien.",
+    version="4.0.0", # Finale Version
+)
 
 @app.get("/")
-def root():
-    return {"service": "bcf-api", "docs": "/docs"}
+def read_root():
+    return {"message": "BCF API Service ist online. Senden Sie eine POST-Anfrage an /bcf/topics, um eine Datei zu verarbeiten."}
 
 @app.post("/bcf/topics")
-async def list_topics(file: UploadFile = File(...)):
-    import tempfile, os
-    content = await file.read()
+async def list_bcf_topics(file: UploadFile = File(...)):
+    """
+    Nimmt eine hochgeladene .bcfzip-Datei entgegen, liest die Issues
+    und gibt deren Titel und GUIDs zurück.
+    """
+    # Wir benutzen einen temporären Ordner, um die hochgeladene Datei sicher zu speichern
     with tempfile.TemporaryDirectory() as tmpdir:
-        bcfzip = os.path.join(tmpdir, file.filename or "input.bcfzip")
-        with open(bcfzip, "wb") as f:
+        file_path = os.path.join(tmpdir, file.filename)
+        
+        # Dateiinhalt in die temporäre Datei schreiben
+        content = await file.read()
+        with open(file_path, "wb") as f:
             f.write(content)
-        pkg = bcf_reader.read_bcf(bcfzip)
-        topics = []
-        # bcf-reader: pkg.topics meist entweder dict oder list of objects
-        if hasattr(pkg, "topics") and isinstance(pkg.topics, dict):
-            for t in pkg.topics.values():
-                title = getattr(t, "title", getattr(getattr(t, "topic", None), "title", None))
-                guid = getattr(t, "guid", getattr(getattr(t, "topic", None), "guid", None))
-                topics.append({"guid": guid, "title": title})
-        elif hasattr(pkg, "topics") and isinstance(pkg.topics, list):
-            for t in pkg.topics:
-                title = getattr(t, "title", getattr(getattr(t, "topic", None), "title", None))
-                guid = getattr(t, "guid", getattr(getattr(t, "topic", None), "guid", None))
-                topics.append({"guid": guid, "title": title})
-        else:
-            topics.append({"info": "Unbekannte BCF-Struktur"})
-        return JSONResponse({"count": len(topics), "topics": topics})
+        
+        try:
+            # Hier benutzen wir die funktionierende BcfXml-Klasse
+            bcf = BcfXml(file_path)
+            issues = []
+            for topic in bcf.topics:
+                issues.append({
+                    "guid": topic.guid,
+                    "title": topic.title,
+                    "status": topic.topic_status
+                })
+            return JSONResponse(content={"file": file.filename, "issues": issues})
+        
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to process BCF file: {e}")
