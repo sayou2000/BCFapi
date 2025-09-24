@@ -5,7 +5,6 @@ from typing import List
 
 # Wir importieren die BcfXml-Klasse aus der bcf-client Bibliothek
 from bcf.bcfxml import BcfXml
-from bcf.topic import Topic
 
 # --- Konfiguration & Sicherheit (NEU) ---
 
@@ -152,3 +151,4 @@ def update_bcf_topic(file_name: str, topic_guid: str, new_status: str, new_title
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Bearbeiten der BCF-Datei: {e}")
+
