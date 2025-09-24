@@ -1,15 +1,14 @@
 import zipfile
 import xml.etree.ElementTree as ET
-import io
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Response
 from fastapi.security.api_key import APIKeyHeader
 import os
 
 # --- Konfiguration & Sicherheit ---
 app = FastAPI(
     title="BCF API Service",
-    description="Ein robuster API-Service zum direkten Parsen von BCF-Dateien.",
-    version="4.0.0 (stable)",
+    description="Ein robuster API-Service zum direkten Parsen von BCF-Dateien und Ausliefern von Snapshots.",
+    version="4.1.0 (mit Snapshots)",
 )
 
 DATA_FOLDER = "/data"
@@ -26,7 +25,7 @@ async def get_api_key(api_key: str = Depends(api_key_header)):
 
 @app.get("/")
 def read_root():
-    return {"message": "BCF API Service v4 (stabiler Parser) ist online."}
+    return {"message": "BCF API Service v4.1 (mit Snapshots) ist online."}
 
 @app.get("/bcf", summary="Alle BCF-Dateien auflisten")
 def list_bcf_files():
@@ -38,9 +37,7 @@ def list_bcf_files():
 
 @app.get("/bcf/{file_name}", summary="Inhalt einer BCF-Datei lesen")
 def process_bcf_file(file_name: str):
-    """
-    Liest eine BCF-Datei durch direktes Parsen des ZIP- und XML-Inhalts.
-    """
+    """Liest eine BCF-Datei und fügt direkte Snapshot-URLs hinzu."""
     file_path = os.path.join(DATA_FOLDER, file_name)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"Datei '{file_name}' nicht gefunden.")
@@ -48,30 +45,69 @@ def process_bcf_file(file_name: str):
     issues = []
     try:
         with zipfile.ZipFile(file_path, 'r') as bcf_zip:
-            # Finde alle markup.bcf Dateien (normalerweise eine pro Topic)
+            zip_namelist = bcf_zip.namelist()
             for file_info in bcf_zip.infolist():
                 if file_info.filename.endswith('markup.bcf'):
-                    # Lese den XML-Inhalt der markup.bcf
                     xml_content = bcf_zip.read(file_info.filename)
                     root = ET.fromstring(xml_content)
-
-                    # Extrahiere die benötigten Informationen direkt aus dem XML-Tree
                     topic = root.find('Topic')
-                    header = root.find('Header')
                     
                     if topic is not None:
+                        guid = topic.get('Guid')
+                        snapshot_url = None
+                        
+                        # (NEU) Prüfen, ob ein Snapshot existiert und URL generieren
+                        snapshot_path_png = f"{guid}/snapshot.png"
+                        snapshot_path_jpeg = f"{guid}/snapshot.jpeg"
+                        
+                        if snapshot_path_png in zip_namelist or snapshot_path_jpeg in zip_namelist:
+                            snapshot_url = f"/bcf/{file_name}/snapshot/{guid}"
+
                         issues.append({
-                            "guid": topic.get('Guid'),
+                            "guid": guid,
                             "title": topic.findtext('Title'),
                             "status": topic.get('TopicStatus'),
                             "priority": topic.findtext('Priority'),
-                            # Prüfe, ob es zu diesem Topic einen Viewpoint gibt
-                            "has_snapshot": f"{file_info.filename.split('/')[0]}/viewpoint.bcfv" in bcf_zip.namelist()
+                            "snapshot_url": snapshot_url # Ersetzt "has_snapshot"
                         })
 
         return {"file": file_name, "issues": issues}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim manuellen Parsen der BCF-Datei: {e}")
+        raise HTTPException(status_code=500, detail=f"Fehler beim Parsen der BCF-Datei: {e}")
+
+# (NEUER ENDPUNKT)
+@app.get("/bcf/{file_name}/snapshot/{guid}", summary="Snapshot-Bild für ein Topic abrufen")
+def get_snapshot(file_name: str, guid: str):
+    """
+    Extrahiert das Snapshot-Bild für ein bestimmtes Topic und liefert es als Bilddatei zurück.
+    """
+    file_path = os.path.join(DATA_FOLDER, file_name)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="BCF-Datei nicht gefunden.")
+
+    try:
+        with zipfile.ZipFile(file_path, 'r') as bcf_zip:
+            # Suche nach PNG oder JPEG Snapshot
+            snapshot_path_png = f"{guid}/snapshot.png"
+            snapshot_path_jpeg = f"{guid}/snapshot.jpeg"
+            
+            image_data = None
+            media_type = None
+
+            if snapshot_path_png in bcf_zip.namelist():
+                image_data = bcf_zip.read(snapshot_path_png)
+                media_type = "image/png"
+            elif snapshot_path_jpeg in bcf_zip.namelist():
+                image_data = bcf_zip.read(snapshot_path_jpeg)
+                media_type = "image/jpeg"
+            
+            if image_data:
+                return Response(content=image_data, media_type=media_type)
+            else:
+                raise HTTPException(status_code=404, detail="Kein Snapshot für dieses Topic gefunden.")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fehler beim Extrahieren des Snapshots: {e}")
 
 
 @app.post("/bcf/{file_name}", summary="Neue BCF-Datei hochladen", dependencies=[Depends(get_api_key)])
@@ -80,7 +116,6 @@ async def upload_bcf_file(file_name: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Dateiname muss auf .bcfzip enden.")
     
     file_path = os.path.join(DATA_FOLDER, file_name)
-    
     try:
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
