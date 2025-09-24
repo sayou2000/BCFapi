@@ -1,38 +1,45 @@
-from fastapi import FastAPI, HTTPException
-# Korrekter Import-Pfad und Klassenname
-from bcf.bcfxml import BcfXml
-import os
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
 
-app = FastAPI(
-    title="BCF API Service",
-    description="Eine API zum Lesen von BCF-Dateien mit dem bcf-client.",
-    version="3.0.0", # Finale Version
-)
+# IFC & BCF-Imports
+import ifcopenshell
+# Wichtig: nicht ifcopenshell.bcf importieren, sondern das separate Paket:
+from bcf import reader as bcf_reader  # falls das nicht existiert: from bcf.v2 import reader as bcf_reader
 
-DATA_FOLDER = "/data"
+app = FastAPI(title="BCF API")
+
+# Gesundheitscheck & Root
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 @app.get("/")
-def read_root():
-    return {"message": "BCF API Service ist online."}
+def root():
+    return {"service": "bcf-api", "docs": "/docs"}
 
-@app.get("/bcf/{file_name}")
-def process_bcf_file(file_name: str):
-    file_path = os.path.join(DATA_FOLDER, file_name)
-
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="BCF file not found.")
-
-    try:
-        # Hier die korrigierte Klasse verwenden
-        bcf = BcfXml(file_path)
-        issues = []
-        for topic in bcf.topics:
-            issues.append({
-                "guid": topic.guid,
-                "title": topic.title,
-                "status": topic.topic_status,
-                "priority": topic.priority
-            })
-        return {"file": file_name, "issues": issues}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process BCF file: {e}")
+# Minimaler BCF-Testendpunkt
+@app.post("/bcf/topics")
+async def list_topics(file: UploadFile = File(...)):
+    # Datei als Bytes lesen und temporär speichern
+    import tempfile, os
+    content = await file.read()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        bcfzip = os.path.join(tmpdir, file.filename or "input.bcfzip")
+        with open(bcfzip, "wb") as f:
+            f.write(content)
+        # BCF laden
+        pkg = bcf_reader.read_bcf(bcfzip)
+        topics = []
+        if hasattr(pkg, "topics") and isinstance(pkg.topics, dict):
+            for t in pkg.topics.values():
+                title = getattr(getattr(t, "topic", t), "title", None)
+                guid = getattr(getattr(t, "topic", t), "guid", None) or getattr(t, "guid", None)
+                topics.append({"guid": guid, "title": title})
+        elif hasattr(pkg, "topics") and isinstance(pkg.topics, list):
+            for t in pkg.topics:
+                title = getattr(getattr(t, "topic", t), "title", None)
+                guid = getattr(getattr(t, "topic", t), "guid", None) or getattr(t, "guid", None)
+                topics.append({"guid": guid, "title": title})
+        else:
+            topics.append({"info": "Unbekannte BCF-Struktur"})
+        return JSONResponse({"count": len(topics), "topics": topics})
