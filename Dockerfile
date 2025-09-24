@@ -1,15 +1,15 @@
-# Starte mit einem offiziellen, schlanken Python 3.11 Image
-FROM python:3.11-slim
+# NEU: Wir verwenden eine ältere, stabilere Python-Version
+FROM python:3.9-slim
 
 # Installiere die minimal nötigen System-Abhängigkeiten
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Installiere die benötigten Python-Pakete (jetzt mit bcfpy statt bcf-client)
+# Installiere die benötigten Python-Pakete (wieder mit bcf-client)
 RUN pip install --no-cache-dir --upgrade \
     ifcopenshell \
-    bcfpy \
+    bcf-client \
     fastapi "uvicorn[standard]" \
     python-multipart
 
