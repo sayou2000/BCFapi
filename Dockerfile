@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --no-cache-dir \
     ifcopenshell \
-    bcf-client==0.7.0 \
+    bcf-client==0.7.10 \
     fastapi "uvicorn[standard]" \
     python-multipart
 
@@ -23,4 +23,5 @@ EXPOSE 80
 
 # Starte den FastAPI-Server
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
+
 
