@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 # IFC & BCF-Imports
 import ifcopenshell
 # Wichtig: nicht ifcopenshell.bcf importieren, sondern das separate Paket:
-from bcf import reader as bcf_reader  # falls das nicht existiert: from bcf.v2 import reader as bcf_reader
+from bcf.v2 import reader as bcf_reader  # falls das nicht existiert: from bcf.v2 import reader as bcf_reader
 
 app = FastAPI(title="BCF API")
 
@@ -43,3 +43,4 @@ async def list_topics(file: UploadFile = File(...)):
         else:
             topics.append({"info": "Unbekannte BCF-Struktur"})
         return JSONResponse({"count": len(topics), "topics": topics})
+
