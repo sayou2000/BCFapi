@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 # Wir importieren die BCF-Klasse aus dem neuen 'bcf-client' Paket
-from bcf.v2.bcfxml import BCF
+from bcf.bcfxml import BCF
 import os
 
 app = FastAPI(
@@ -41,3 +41,4 @@ def process_bcf_file(file_name: str):
         return {"file": file_name, "issues": issues}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process BCF file: {e}")
+
