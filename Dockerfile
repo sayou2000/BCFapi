@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Installiere IfcOpenShell über pip, zusammen mit FastAPI
-RUN pip install --no-cache-dir python-ifcopenshell fastapi "uvicorn[standard]"
+RUN pip install --no-cache-dir ifcopenshell fastapi "uvicorn[standard]"
 
 # Lege das Arbeitsverzeichnis fest
 WORKDIR /app
