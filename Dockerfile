@@ -1,27 +1,18 @@
-# Starte mit dem offiziellen Miniconda-Image
-FROM continuumio/miniconda3:latest
+FROM python:3.11-slim
 
-# Erstelle eine saubere Conda-Umgebung mit Python 3.11
-RUN conda create -n ifcenv python=3.11
+# Schlanke Systemlibs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libxrender1 libxext6 libglib2.0-0 \
+ && rm -rf /var/lib/apt/lists/*
 
-# Installiere alle Pakete IN DIESER UMGEBUNG
-# Wir aktivieren die Umgebung für die nachfolgenden RUN-Befehle
-SHELL ["conda", "run", "-n", "ifcenv", "/bin/bash", "-c"]
+# Installiere IFC + BCF + API-Stack
+RUN pip install --no-cache-dir \
+    ifcopenshell \
+    bcf-client \
+    fastapi "uvicorn[standard]" python-multipart
 
-# Installiere IfcOpenShell (die stabile Version für Python 3.11) und Lark
-RUN conda install -c conda-forge ifcopenshell lark
-
-# Installiere den API-Stack mit dem pip aus unserer neuen Umgebung
-RUN pip install fastapi "uvicorn[standard]"
-
-# Lege das Arbeitsverzeichnis fest
 WORKDIR /app
+COPY main.py /app/main.py
 
-# Kopiere deine API-Datei in den Container
-COPY main.py .
-
-# Gib den Port frei
 EXPOSE 80
-
-# Starte den Server aus der korrekten Conda-Umgebung
-CMD ["conda", "run", "-n", "ifcenv", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
