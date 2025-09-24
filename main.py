@@ -1,14 +1,15 @@
 from fastapi import FastAPI, HTTPException
-import ifcopenshell.bcf
+# Wir importieren die BCF-Klasse aus dem neuen 'bcf-client' Paket
+from bcf.v2.bcfxml import BCF
 import os
 
 app = FastAPI(
     title="BCF API Service",
-    description="Eine API zum Lesen von BCF-Dateien mit IfcOpenShell.",
-    version="1.0.0",
+    description="Eine API zum Lesen von BCF-Dateien mit dem bcf-client.",
+    version="2.0.0",
 )
 
-# Wir definieren den Ordner, in dem die BCF-Dateien auf dem Server liegen
+# Der Ordner, in dem die BCF-Dateien auf dem Server liegen, bleibt gleich
 DATA_FOLDER = "/data"
 
 @app.get("/")
@@ -26,14 +27,16 @@ def process_bcf_file(file_name: str):
         raise HTTPException(status_code=404, detail="BCF file not found.")
 
     try:
-        bcf = ifcopenshell.bcf.open(file_path)
+        # Hier ist die neue Logik: Wir benutzen die BCF-Klasse aus bcf-client
+        bcf = BCF(file_path)
         issues = []
-        for topic_guid, topic in bcf.get_topics().items():
+        # Die neue Bibliothek hat eine einfache 'topics'-Liste
+        for topic in bcf.topics:
             issues.append({
-                "guid": topic_guid,
-                "title": topic.markup.topic.title,
-                "status": topic.markup.topic.topic_status,
-                "priority": topic.markup.topic.priority
+                "guid": topic.guid,
+                "title": topic.title,
+                "status": topic.topic_status,
+                "priority": topic.priority
             })
         return {"file": file_name, "issues": issues}
     except Exception as e:
