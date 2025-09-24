@@ -8,7 +8,7 @@ import os
 app = FastAPI(
     title="BCF API Service",
     description="Ein robuster API-Service zum direkten Parsen von BCF-Dateien und Ausliefern von Snapshots.",
-    version="4.1.0 (mit Snapshots)",
+    version="4.2.0 (flexible Snapshots)",
 )
 
 DATA_FOLDER = "/data"
@@ -25,7 +25,7 @@ async def get_api_key(api_key: str = Depends(api_key_header)):
 
 @app.get("/")
 def read_root():
-    return {"message": "BCF API Service v4.1 (mit Snapshots) ist online."}
+    return {"message": "BCF API Service v4.2 (flexible Snapshots) ist online."}
 
 @app.get("/bcf", summary="Alle BCF-Dateien auflisten")
 def list_bcf_files():
@@ -56,11 +56,13 @@ def process_bcf_file(file_name: str):
                         guid = topic.get('Guid')
                         snapshot_url = None
                         
-                        # (NEU) Prüfen, ob ein Snapshot existiert und URL generieren
-                        snapshot_path_png = f"{guid}/snapshot.png"
-                        snapshot_path_jpeg = f"{guid}/snapshot.jpeg"
-                        
-                        if snapshot_path_png in zip_namelist or snapshot_path_jpeg in zip_namelist:
+                        # (NEUE, FLEXIBLE LOGIK) Sucht nach jedem Dateinamen, der mit "snapshot" beginnt
+                        topic_folder = guid + "/"
+                        has_snapshot_file = any(
+                            f.startswith(topic_folder + "snapshot") for f in zip_namelist
+                        )
+
+                        if has_snapshot_file:
                             snapshot_url = f"/bcf/{file_name}/snapshot/{guid}"
 
                         issues.append({
@@ -68,14 +70,13 @@ def process_bcf_file(file_name: str):
                             "title": topic.findtext('Title'),
                             "status": topic.get('TopicStatus'),
                             "priority": topic.findtext('Priority'),
-                            "snapshot_url": snapshot_url # Ersetzt "has_snapshot"
+                            "snapshot_url": snapshot_url
                         })
 
         return {"file": file_name, "issues": issues}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Parsen der BCF-Datei: {e}")
 
-# (NEUER ENDPUNKT)
 @app.get("/bcf/{file_name}/snapshot/{guid}", summary="Snapshot-Bild für ein Topic abrufen")
 def get_snapshot(file_name: str, guid: str):
     """
@@ -87,23 +88,20 @@ def get_snapshot(file_name: str, guid: str):
 
     try:
         with zipfile.ZipFile(file_path, 'r') as bcf_zip:
-            # Suche nach PNG oder JPEG Snapshot
-            snapshot_path_png = f"{guid}/snapshot.png"
-            snapshot_path_jpeg = f"{guid}/snapshot.jpeg"
-            
-            image_data = None
-            media_type = None
+            # (NEUE, FLEXIBLE LOGIK) Sucht nach der ersten Datei, die mit snapshot beginnt
+            snapshot_filename = None
+            topic_folder = guid + "/"
+            for f in bcf_zip.namelist():
+                if f.startswith(topic_folder + "snapshot"):
+                    snapshot_filename = f
+                    break # Nimm die erste gefundene Datei
 
-            if snapshot_path_png in bcf_zip.namelist():
-                image_data = bcf_zip.read(snapshot_path_png)
-                media_type = "image/png"
-            elif snapshot_path_jpeg in bcf_zip.namelist():
-                image_data = bcf_zip.read(snapshot_path_jpeg)
-                media_type = "image/jpeg"
-            
-            if image_data:
+            if snapshot_filename:
+                image_data = bcf_zip.read(snapshot_filename)
+                media_type = "image/png" if snapshot_filename.lower().endswith(".png") else "image/jpeg"
                 return Response(content=image_data, media_type=media_type)
             else:
+                # Dieser Fehler wird jetzt nur noch geworfen, wenn wirklich keine Datei gefunden wird
                 raise HTTPException(status_code=404, detail="Kein Snapshot für dieses Topic gefunden.")
 
     except Exception as e:
