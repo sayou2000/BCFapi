@@ -1,24 +1,24 @@
-# Starte mit einem offiziellen Image, das Miniconda (ein leichtes Anaconda) enthält
 FROM continuumio/miniconda3:latest
 
-# Installiere die nötigen System-Abhängigkeiten
+# Schnelle, schlanke Systembasis
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake \
-    && rm -rf /var/lib/apt/lists/*
+    tini \
+ && rm -rf /var/lib/apt/lists/*
 
-# Installiere IfcOpenShell über Conda aus dem conda-forge Kanal
-# Sowie FastAPI und Uvicorn über pip
-RUN conda install -c conda-forge ifcopenshell && \
-    pip install fastapi "uvicorn[standard]"
+# Conda-Channel korrekt setzen und IfcOpenShell + BCF installieren
+RUN conda config --add channels conda-forge \
+ && conda config --set channel_priority strict \
+ && conda install -y ifcopenshell bcf-client \
+ && conda clean -afy
 
-# Lege das Arbeitsverzeichnis fest
+# Python-API-Stack
+RUN pip install --no-cache-dir fastapi "uvicorn[standard]" python-multipart
+
+# App vorbereiten
 WORKDIR /app
+COPY main.py /app/main.py
 
-# Kopiere deine API-Datei in den Container
-COPY main.py .
-
-# Gib den Port frei
+# Port & Entrypoint
 EXPOSE 80
-
-# Starte den FastAPI-Server
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
