@@ -1,13 +1,15 @@
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Response
+import zipfile
+import xml.etree.ElementTree as ET
+import io
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.security.api_key import APIKeyHeader
 import os
-from bcf.bcfxml import BcfXml # WIEDER DIE ALTE BIBLIOTHEK
 
 # --- Konfiguration & Sicherheit ---
 app = FastAPI(
     title="BCF API Service",
-    description="Eine API zum Lesen von BCF-Dateien auf dem Server.",
-    version="2.1.0", # Version angepasst
+    description="Ein robuster API-Service zum direkten Parsen von BCF-Dateien.",
+    version="4.0.0 (stable)",
 )
 
 DATA_FOLDER = "/data"
@@ -24,7 +26,7 @@ async def get_api_key(api_key: str = Depends(api_key_header)):
 
 @app.get("/")
 def read_root():
-    return {"message": "BCF API Service ist online (Python 3.9)."}
+    return {"message": "BCF API Service v4 (stabiler Parser) ist online."}
 
 @app.get("/bcf", summary="Alle BCF-Dateien auflisten")
 def list_bcf_files():
@@ -36,30 +38,40 @@ def list_bcf_files():
 
 @app.get("/bcf/{file_name}", summary="Inhalt einer BCF-Datei lesen")
 def process_bcf_file(file_name: str):
+    """
+    Liest eine BCF-Datei durch direktes Parsen des ZIP- und XML-Inhalts.
+    """
     file_path = os.path.join(DATA_FOLDER, file_name)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"Datei '{file_name}' nicht gefunden.")
 
+    issues = []
     try:
-        bcf = BcfXml(file_path)
-        issues = []
-        for i, topic in enumerate(bcf.topics):
-            try:
-                issue_data = {
-                    "guid": topic.guid,
-                    "title": topic.title,
-                    "status": topic.topic_status,
-                    "priority": topic.priority,
-                    "has_snapshot": bool(topic.viewpoints)
-                }
-                issues.append(issue_data)
-            except Exception as e:
-                error_message = f"Fehler bei Topic #{i} (GUID: {getattr(topic, 'guid', 'N/A')}): {e}"
-                print(error_message)
-                issues.append({"error": "Konnte dieses Topic nicht verarbeiten.", "details": error_message})
+        with zipfile.ZipFile(file_path, 'r') as bcf_zip:
+            # Finde alle markup.bcf Dateien (normalerweise eine pro Topic)
+            for file_info in bcf_zip.infolist():
+                if file_info.filename.endswith('markup.bcf'):
+                    # Lese den XML-Inhalt der markup.bcf
+                    xml_content = bcf_zip.read(file_info.filename)
+                    root = ET.fromstring(xml_content)
+
+                    # Extrahiere die benötigten Informationen direkt aus dem XML-Tree
+                    topic = root.find('Topic')
+                    header = root.find('Header')
+                    
+                    if topic is not None:
+                        issues.append({
+                            "guid": topic.get('Guid'),
+                            "title": topic.findtext('Title'),
+                            "status": topic.get('TopicStatus'),
+                            "priority": topic.findtext('Priority'),
+                            # Prüfe, ob es zu diesem Topic einen Viewpoint gibt
+                            "has_snapshot": f"{file_info.filename.split('/')[0]}/viewpoint.bcfv" in bcf_zip.namelist()
+                        })
+
         return {"file": file_name, "issues": issues}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Generischer Fehler beim Laden der BCF-Datei: {e}")
+        raise HTTPException(status_code=500, detail=f"Fehler beim manuellen Parsen der BCF-Datei: {e}")
 
 
 @app.post("/bcf/{file_name}", summary="Neue BCF-Datei hochladen", dependencies=[Depends(get_api_key)])
