@@ -27,7 +27,7 @@ async def get_api_key(api_key: str = Depends(api_key_header)):
 def read_root():
     return {"message": "BCF API Service v4.2 (flexible Snapshots) ist online."}
 
-@app.get("/bcf", summary="Alle BCF-Dateien auflisten")
+@app.get("/bcf", summary="Alle BCF-Dateien auflisten", dependencies=[Depends(get_api_key)])
 def list_bcf_files():
     try:
         files = [f for f in os.listdir(DATA_FOLDER) if f.endswith('.bcfzip')]
@@ -35,7 +35,7 @@ def list_bcf_files():
     except FileNotFoundError:
         return {"files": []}
 
-@app.get("/bcf/{file_name}", summary="Inhalt einer BCF-Datei lesen")
+@app.get("/bcf/{file_name}", summary="Inhalt einer BCF-Datei lesen", dependencies=[Depends(get_api_key)])
 def process_bcf_file(file_name: str):
     """Liest eine BCF-Datei und fügt direkte Snapshot-URLs hinzu."""
     file_path = os.path.join(DATA_FOLDER, file_name)
@@ -77,7 +77,7 @@ def process_bcf_file(file_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Parsen der BCF-Datei: {e}")
 
-@app.get("/bcf/{file_name}/snapshot/{guid}", summary="Snapshot-Bild für ein Topic abrufen")
+@app.get("/bcf/{file_name}/snapshot/{guid}", summary="Snapshot-Bild für ein Topic abrufen", dependencies=[Depends(get_api_key)])
 def get_snapshot(file_name: str, guid: str):
     """
     Extrahiert das Snapshot-Bild für ein bestimmtes Topic und liefert es als Bilddatei zurück.
@@ -120,3 +120,4 @@ async def upload_bcf_file(file_name: str, file: UploadFile = File(...)):
         return {"message": f"Datei '{file_name}' erfolgreich hochgeladen."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Speichern der Datei: {e}")
+
