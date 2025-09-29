@@ -8,7 +8,7 @@ import os
 app = FastAPI(
     title="BCF API Service",
     description="Ein robuster API-Service zum direkten Parsen von BCF-Dateien und Ausliefern von Snapshots.",
-    version="4.2.0 (flexible Snapshots)",
+    version="4.3.0 (extended attributes)", # Version erhöht
 )
 
 DATA_FOLDER = "/data"
@@ -25,7 +25,7 @@ async def get_api_key(api_key: str = Depends(api_key_header)):
 
 @app.get("/")
 def read_root():
-    return {"message": "BCF API Service v4.2 (flexible Snapshots) ist online."}
+    return {"message": "BCF API Service v4.3 (extended attributes) ist online."}
 
 @app.get("/bcf", summary="Alle BCF-Dateien auflisten", dependencies=[Depends(get_api_key)])
 def list_bcf_files():
@@ -37,7 +37,7 @@ def list_bcf_files():
 
 @app.get("/bcf/{file_name}", summary="Inhalt einer BCF-Datei lesen", dependencies=[Depends(get_api_key)])
 def process_bcf_file(file_name: str):
-    """Liest eine BCF-Datei und fügt direkte Snapshot-URLs hinzu."""
+    """Liest eine BCF-Datei und fügt direkte Snapshot-URLs sowie erweiterte Attribute hinzu."""
     file_path = os.path.join(DATA_FOLDER, file_name)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"Datei '{file_name}' nicht gefunden.")
@@ -56,7 +56,7 @@ def process_bcf_file(file_name: str):
                         guid = topic.get('Guid')
                         snapshot_url = None
                         
-                        # (NEUE, FLEXIBLE LOGIK) Sucht nach jedem Dateinamen, der mit "snapshot" beginnt
+                        # Flexible Snapshot-Logik bleibt unverändert
                         topic_folder = guid + "/"
                         has_snapshot_file = any(
                             f.startswith(topic_folder + "snapshot") for f in zip_namelist
@@ -65,13 +65,22 @@ def process_bcf_file(file_name: str):
                         if has_snapshot_file:
                             snapshot_url = f"/bcf/{file_name}/snapshot/{guid}"
 
+                        # --- ANPASSUNG START ---
+                        # Finde alle 'Labels'-Tags und extrahiere ihren Text in eine Liste
+                        labels = [label.text for label in topic.findall('Labels')]
+
                         issues.append({
                             "guid": guid,
                             "title": topic.findtext('Title'),
                             "status": topic.get('TopicStatus'),
                             "priority": topic.findtext('Priority'),
-                            "snapshot_url": snapshot_url
+                            "snapshot_url": snapshot_url,
+                            # NEUE FELDER
+                            "labels": labels,
+                            "creation_date": topic.findtext('CreationDate'),
+                            "creation_author": topic.findtext('CreationAuthor')
                         })
+                        # --- ANPASSUNG ENDE ---
 
         return {"file": file_name, "issues": issues}
     except Exception as e:
@@ -88,20 +97,18 @@ def get_snapshot(file_name: str, guid: str):
 
     try:
         with zipfile.ZipFile(file_path, 'r') as bcf_zip:
-            # (NEUE, FLEXIBLE LOGIK) Sucht nach der ersten Datei, die mit snapshot beginnt
             snapshot_filename = None
             topic_folder = guid + "/"
             for f in bcf_zip.namelist():
                 if f.startswith(topic_folder + "snapshot"):
                     snapshot_filename = f
-                    break # Nimm die erste gefundene Datei
+                    break 
 
             if snapshot_filename:
                 image_data = bcf_zip.read(snapshot_filename)
                 media_type = "image/png" if snapshot_filename.lower().endswith(".png") else "image/jpeg"
                 return Response(content=image_data, media_type=media_type)
             else:
-                # Dieser Fehler wird jetzt nur noch geworfen, wenn wirklich keine Datei gefunden wird
                 raise HTTPException(status_code=404, detail="Kein Snapshot für dieses Topic gefunden.")
 
     except Exception as e:
@@ -120,4 +127,3 @@ async def upload_bcf_file(file_name: str, file: UploadFile = File(...)):
         return {"message": f"Datei '{file_name}' erfolgreich hochgeladen."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Speichern der Datei: {e}")
-
