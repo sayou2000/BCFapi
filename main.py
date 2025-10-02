@@ -3,12 +3,13 @@ import xml.etree.ElementTree as ET
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Response
 from fastapi.security.api_key import APIKeyHeader
 import os
+import re # <-- NEU: Import für reguläre Ausdrücke
 
 # --- Konfiguration & Sicherheit ---
 app = FastAPI(
     title="BCF API Service",
     description="Ein robuster API-Service zum direkten Parsen von BCF-Dateien und Ausliefern von Snapshots.",
-    version="4.3.0 (extended attributes)", # Version erhöht
+    version="4.4.0 (OpenSpace Integration)", # Version erhöht
 )
 
 DATA_FOLDER = "/data"
@@ -25,7 +26,7 @@ async def get_api_key(api_key: str = Depends(api_key_header)):
 
 @app.get("/")
 def read_root():
-    return {"message": "BCF API Service v4.3 (extended attributes) ist online."}
+    return {"message": "BCF API Service v4.4 (OpenSpace Integration) ist online."}
 
 @app.get("/bcf", summary="Alle BCF-Dateien auflisten", dependencies=[Depends(get_api_key)])
 def list_bcf_files():
@@ -56,7 +57,6 @@ def process_bcf_file(file_name: str):
                         guid = topic.get('Guid')
                         snapshot_url = None
                         
-                        # Flexible Snapshot-Logik bleibt unverändert
                         topic_folder = guid + "/"
                         has_snapshot_file = any(
                             f.startswith(topic_folder + "snapshot") for f in zip_namelist
@@ -65,9 +65,28 @@ def process_bcf_file(file_name: str):
                         if has_snapshot_file:
                             snapshot_url = f"/bcf/{file_name}/snapshot/{guid}"
 
-                        # --- ANPASSUNG START ---
-                        # Finde alle 'Labels'-Tags und extrahiere ihren Text in eine Liste
                         labels = [label.text for label in topic.findall('Labels')]
+                        
+                        # --- ANPASSUNG START: OpenSpace-Daten extrahieren ---
+                        
+                        # 1. Beschreibungstext sicher auslesen
+                        description_text = topic.findtext('Description', default="")
+                        
+                        # 2. Variablen für die IDs initialisieren
+                        openspace_site_id = None
+                        openspace_note_id = None
+                        
+                        # 3. Nur parsen, wenn es sich um eine OpenSpace-URL handelt
+                        if "openspace.ai" in description_text:
+                            site_match = re.search(r"site=([a-zA-Z0-9_\-]+)", description_text)
+                            if site_match:
+                                openspace_site_id = site_match.group(1)
+                            
+                            note_match = re.search(r"note=([a-zA-Z0-9_\-]+)", description_text)
+                            if note_match:
+                                openspace_note_id = note_match.group(1)
+
+                        # --- ANPASSUNG ENDE ---
 
                         issues.append({
                             "guid": guid,
@@ -75,17 +94,22 @@ def process_bcf_file(file_name: str):
                             "status": topic.get('TopicStatus'),
                             "priority": topic.findtext('Priority'),
                             "snapshot_url": snapshot_url,
-                            # NEUE FELDER
                             "labels": labels,
                             "creation_date": topic.findtext('CreationDate'),
-                            "creation_author": topic.findtext('CreationAuthor')
+                            "creation_author": topic.findtext('CreationAuthor'),
+                            # NEUE FELDER werden der Antwort hinzugefügt
+                            "description": description_text,
+                            "openspace_site_id": openspace_site_id,
+                            "openspace_note_id": openspace_note_id
                         })
-                        # --- ANPASSUNG ENDE ---
 
         return {"file": file_name, "issues": issues}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Parsen der BCF-Datei: {e}")
 
+# Die restlichen Endpunkte (@app.get("/bcf/{file_name}/snapshot/{guid}", ...) und @app.post(...)
+# bleiben exakt unverändert und sind hier zur besseren Lesbarkeit weggelassen.
+# Bitte stellen Sie sicher, dass sie in Ihrer finalen Datei weiterhin vorhanden sind.
 @app.get("/bcf/{file_name}/snapshot/{guid}", summary="Snapshot-Bild für ein Topic abrufen", dependencies=[Depends(get_api_key)])
 def get_snapshot(file_name: str, guid: str):
     """
